@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
@@ -17,6 +17,9 @@ const ONLINE_BOT_COUNT = 24;
 const FOOD_MASS_GAIN = 0.2;
 const PLAYER_ABSORB_MULT = 0.35;
 const BOT_ABSORB_MULT = 0.3;
+const TURBO_DRAIN_MIN_PER_SEC = 0.35;
+const TURBO_DRAIN_RATIO_PER_SEC = 0.012;
+const TURBO_DRAIN_MAX_PER_SEC = 6000;
 
 const PLAY_MODES = {
   ONLINE: 'online',
@@ -84,6 +87,12 @@ const MAX_CELL_MASS = radiusToMass(MAX_CELL_RADIUS);
 
 function clampCellMass(mass) {
   return clamp(Number.isFinite(mass) ? mass : 1, 1, MAX_CELL_MASS);
+}
+
+function computeTurboMassDrainPerSec(mass) {
+  const safeMass = Math.max(1, Number.isFinite(mass) ? mass : 1);
+  const scaled = safeMass * TURBO_DRAIN_RATIO_PER_SEC;
+  return clamp(scaled, TURBO_DRAIN_MIN_PER_SEC, TURBO_DRAIN_MAX_PER_SEC);
 }
 
 function setEntityMass(entity, nextMass) {
@@ -214,7 +223,8 @@ function updatePlayerMovement(entity, dtSeconds) {
   let speed = 4.5 / Math.max(1, Math.pow(entity.r / 25, 0.4));
   if (entity.turbo && entity.mass > 1.05) {
     speed *= 2.3;
-    setEntityMass(entity, entity.mass - 0.05 * dtSeconds);
+    const turboDrain = computeTurboMassDrainPerSec(entity.mass) * dtSeconds;
+    setEntityMass(entity, entity.mass - turboDrain);
   }
 
   if (d > entity.r * 0.3) {
@@ -538,3 +548,4 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`[SERVER] running on port ${PORT}`);
 });
+
