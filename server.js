@@ -12,8 +12,8 @@ const io = new Server(server, { cors: { origin: '*' } });
 const WORLD_SIZE = 3000;
 const FPS = 60;
 const TICK_RATE = 1000 / FPS;
-const FOOD_COUNT = 300;
-const ONLINE_BOT_COUNT = 24;
+const FOOD_COUNT = 450;
+const ONLINE_BOT_COUNT = 45;
 const FOOD_MASS_GAIN_BASE = 0.12;
 const FOOD_MASS_GAIN_MIN = 0.01;
 const FOOD_MASS_GAIN_MASS_FACTOR = 0.06;
@@ -55,6 +55,7 @@ const BOT_COLORS = [
   [[255, 0, 153], [255, 102, 204]],
   [[153, 255, 0], [102, 199, 0]],
 ];
+const BOT_TYPE_POOL = [0, 0, 0, 0, 1, 2, 3, 4];
 
 const FOOD_COLORS = [
   [255, 51, 102], [255, 120, 0], [255, 219, 0], [51, 255, 153], [0, 199, 255],
@@ -163,12 +164,14 @@ function makePlayer(id, rawName, rawSkinId) {
 
 function makeBot(index) {
   const [c1, c2] = BOT_COLORS[index % BOT_COLORS.length];
-  const skinId = randomInt(0, PLAYER_SKINS.length - 1);
+  const type = BOT_TYPE_POOL[randomInt(0, BOT_TYPE_POOL.length - 1)];
+  const skinId = type;
   return {
     id: `bot_${index}`,
     isBot: true,
-    name: BOT_NAMES[index % BOT_NAMES.length],
+    name: `${BOT_NAMES[index % BOT_NAMES.length]}-${String(index + 1).padStart(2, '0')}`,
     skinId,
+    type,
     color1: c1,
     color2: c2,
     x: randomFloat(100, WORLD_SIZE - 100),
@@ -215,7 +218,7 @@ function serializeEntity(entity) {
     isBot: !!entity.isBot,
     name: entity.name,
     skinId: entity.skinId,
-    type: entity.skinId,
+    type: Number.isFinite(entity.type) ? entity.type : entity.skinId,
     color1: entity.color1,
     color2: entity.color2,
     x: entity.x,
@@ -257,6 +260,7 @@ function addFoodFx(world, food, eater) {
     color: food.color,
     eaterId: eater.id,
     eaterRadius: eater.r,
+    eaterIsBot: Boolean(eater.isBot),
   });
 }
 
@@ -497,15 +501,11 @@ function resolveWorldCollisions(world, mode) {
         if (d < p.r - bot.r * 0.3 && p.mass > bot.mass * 1.1) {
           addEatFx(world, bot, p, true);
           setEntityMass(p, p.mass + bot.mass * PLAYER_ABSORB_MULT);
-          p.score += bot.score + 40;
+          p.score += bot.score + 50;
           removedBots.add(bot.id);
         } else if (d < bot.r - p.r * 0.3 && bot.mass > p.mass * 1.1) {
           addEatFx(world, p, bot, true);
-          const defeatedMass = p.mass;
-          const defeatedScore = p.score;
           removedPlayers.add(p.id);
-          setEntityMass(bot, bot.mass + defeatedMass * BOT_ABSORB_MULT);
-          bot.score += defeatedScore + 40;
           io.to(p.id).emit('death', { killer: bot.name });
           break;
         }
