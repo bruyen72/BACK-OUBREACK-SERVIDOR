@@ -10,7 +10,7 @@ const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 
 const WORLD_SIZE = 3000;
-const FPS = 30;
+const FPS = 60;
 const TICK_RATE = 1000 / FPS;
 const FOOD_COUNT = 300;
 const ONLINE_BOT_COUNT = 24;
@@ -23,6 +23,9 @@ const TURBO_DRAIN_MIN_PER_SEC = 1.2;
 const TURBO_DRAIN_RATIO_PER_SEC = 0.05;
 const TURBO_DRAIN_MAX_PER_SEC = 20000;
 const TURBO_SCORE_DRAIN_PER_MASS = 120;
+const INPUT_SENS_MIN = 0.55;
+const INPUT_SENS_MAX = 2.2;
+const INPUT_SENS_DEFAULT = 1.0;
 
 const PLAY_MODES = {
   ONLINE: 'online',
@@ -72,6 +75,10 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
 function distance(ax, ay, bx, by) {
   return Math.hypot(ax - bx, ay - by);
 }
@@ -87,6 +94,11 @@ function radiusToMass(radius) {
 const WORLD_EDGE_MARGIN = 20;
 const MAX_CELL_RADIUS = WORLD_SIZE * 0.5 - WORLD_EDGE_MARGIN;
 const MAX_CELL_MASS = radiusToMass(MAX_CELL_RADIUS);
+const PLAYER_SENS_T = (INPUT_SENS_DEFAULT - INPUT_SENS_MIN) / (INPUT_SENS_MAX - INPUT_SENS_MIN);
+const PLAYER_ACCEL_MUL = lerp(0.62, 1.95, PLAYER_SENS_T);
+const PLAYER_DAMPING = lerp(0.9, 0.78, PLAYER_SENS_T);
+const PLAYER_STOP_RADIUS_FACTOR = lerp(0.52, 0.16, PLAYER_SENS_T);
+const PLAYER_MAX_VEL_FACTOR = lerp(1.8, 3.4, PLAYER_SENS_T);
 
 function clampCellMass(mass) {
   return clamp(Number.isFinite(mass) ? mass : 1, 1, MAX_CELL_MASS);
@@ -293,13 +305,20 @@ function updatePlayerMovement(entity, dtSeconds) {
     }
   }
 
-  if (d > entity.r * 0.3) {
-    entity.vx += (dx / d) * speed * 0.25;
-    entity.vy += (dy / d) * speed * 0.25;
+  if (d > entity.r * PLAYER_STOP_RADIUS_FACTOR) {
+    entity.vx += (dx / d) * speed * 0.25 * PLAYER_ACCEL_MUL;
+    entity.vy += (dy / d) * speed * 0.25 * PLAYER_ACCEL_MUL;
   }
 
-  entity.vx *= 0.84;
-  entity.vy *= 0.84;
+  entity.vx *= PLAYER_DAMPING;
+  entity.vy *= PLAYER_DAMPING;
+  const maxVel = speed * PLAYER_MAX_VEL_FACTOR;
+  const vel = Math.hypot(entity.vx, entity.vy);
+  if (vel > maxVel) {
+    const inv = maxVel / vel;
+    entity.vx *= inv;
+    entity.vy *= inv;
+  }
   const wallR = getEntityWallRadius(entity);
   entity.x = clamp(entity.x + entity.vx, wallR, WORLD_SIZE - wallR);
   entity.y = clamp(entity.y + entity.vy, wallR, WORLD_SIZE - wallR);
