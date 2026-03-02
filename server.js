@@ -14,12 +14,15 @@ const FPS = 30;
 const TICK_RATE = 1000 / FPS;
 const FOOD_COUNT = 300;
 const ONLINE_BOT_COUNT = 24;
-const FOOD_MASS_GAIN = 0.2;
+const FOOD_MASS_GAIN_BASE = 0.12;
+const FOOD_MASS_GAIN_MIN = 0.01;
+const FOOD_MASS_GAIN_MASS_FACTOR = 0.06;
 const PLAYER_ABSORB_MULT = 0.35;
 const BOT_ABSORB_MULT = 0.3;
-const TURBO_DRAIN_MIN_PER_SEC = 0.35;
-const TURBO_DRAIN_RATIO_PER_SEC = 0.012;
-const TURBO_DRAIN_MAX_PER_SEC = 6000;
+const TURBO_DRAIN_MIN_PER_SEC = 1.2;
+const TURBO_DRAIN_RATIO_PER_SEC = 0.05;
+const TURBO_DRAIN_MAX_PER_SEC = 20000;
+const TURBO_SCORE_DRAIN_PER_MASS = 120;
 
 const PLAY_MODES = {
   ONLINE: 'online',
@@ -87,6 +90,12 @@ const MAX_CELL_MASS = radiusToMass(MAX_CELL_RADIUS);
 
 function clampCellMass(mass) {
   return clamp(Number.isFinite(mass) ? mass : 1, 1, MAX_CELL_MASS);
+}
+
+function computeFoodMassGain(mass) {
+  const safeMass = Math.max(1, Number.isFinite(mass) ? mass : 1);
+  const scaledGain = FOOD_MASS_GAIN_BASE / (1 + safeMass * FOOD_MASS_GAIN_MASS_FACTOR);
+  return Math.max(FOOD_MASS_GAIN_MIN, scaledGain);
 }
 
 function computeTurboMassDrainPerSec(mass) {
@@ -223,8 +232,13 @@ function updatePlayerMovement(entity, dtSeconds) {
   let speed = 4.5 / Math.max(1, Math.pow(entity.r / 25, 0.4));
   if (entity.turbo && entity.mass > 1.05) {
     speed *= 2.3;
+    const massBeforeTurbo = entity.mass;
     const turboDrain = computeTurboMassDrainPerSec(entity.mass) * dtSeconds;
     setEntityMass(entity, entity.mass - turboDrain);
+    const massLostTurbo = Math.max(0, massBeforeTurbo - entity.mass);
+    if (massLostTurbo > 0) {
+      entity.score = Math.max(0, entity.score - massLostTurbo * TURBO_SCORE_DRAIN_PER_MASS);
+    }
   }
 
   if (d > entity.r * 0.3) {
@@ -365,7 +379,7 @@ function applyFoodCollisions(world) {
     for (let i = world.foods.length - 1; i >= 0; i -= 1) {
       const food = world.foods[i];
       if (distance(food.x, food.y, eater.x, eater.y) < eater.r) {
-        setEntityMass(eater, eater.mass + FOOD_MASS_GAIN);
+        setEntityMass(eater, eater.mass + computeFoodMassGain(eater.mass));
         eater.score += 10;
         world.foods.splice(i, 1);
         world.foods.push(makeFood());
