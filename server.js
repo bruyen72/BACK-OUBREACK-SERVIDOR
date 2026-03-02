@@ -184,6 +184,7 @@ function createWorld(mode) {
     players: {},
     foods,
     bots,
+    fx: [],
   };
 }
 
@@ -215,12 +216,50 @@ function serializeEntity(entity) {
   };
 }
 
-function broadcastState(mode) {
+function broadcastState(mode, includeFx = false) {
   const world = worlds[mode];
   io.to(mode).emit('state_update', {
     players: Object.values(world.players).map(serializeEntity),
     bots: world.bots.map(serializeEntity),
     foods: world.foods,
+    fx: includeFx ? world.fx : [],
+  });
+}
+
+function pushWorldFx(world, event) {
+  if (!world || !event || typeof event !== 'object') return;
+  if (!Array.isArray(world.fx)) world.fx = [];
+  world.fx.push(event);
+  const MAX_FX_PER_TICK = 160;
+  if (world.fx.length > MAX_FX_PER_TICK) {
+    world.fx = world.fx.slice(-MAX_FX_PER_TICK);
+  }
+}
+
+function addFoodFx(world, food, eater) {
+  if (!food || !eater) return;
+  pushWorldFx(world, {
+    kind: 'food',
+    x: food.x,
+    y: food.y,
+    color: food.color,
+    eaterId: eater.id,
+    eaterRadius: eater.r,
+  });
+}
+
+function addEatFx(world, victim, killer, big = true) {
+  if (!victim) return;
+  pushWorldFx(world, {
+    kind: 'eat',
+    x: victim.x,
+    y: victim.y,
+    color: victim.color1,
+    skinId: victim.skinId,
+    type: victim.skinId,
+    victimId: victim.id,
+    killerId: killer?.id || '',
+    big: Boolean(big),
   });
 }
 
@@ -379,6 +418,7 @@ function applyFoodCollisions(world) {
     for (let i = world.foods.length - 1; i >= 0; i -= 1) {
       const food = world.foods[i];
       if (distance(food.x, food.y, eater.x, eater.y) < eater.r) {
+        addFoodFx(world, food, eater);
         setEntityMass(eater, eater.mass + computeFoodMassGain(eater.mass));
         eater.score += 10;
         world.foods.splice(i, 1);
@@ -400,11 +440,13 @@ function resolveWorldCollisions(world, mode) {
       if (removedPlayers.has(p2.id)) continue;
       const d = distance(p1.x, p1.y, p2.x, p2.y);
       if (d < p1.r - p2.r * 0.3 && p1.mass > p2.mass * 1.1) {
+        addEatFx(world, p2, p1, true);
         setEntityMass(p1, p1.mass + p2.mass * PLAYER_ABSORB_MULT);
         p1.score += p2.score + 50;
         removedPlayers.add(p2.id);
         io.to(p2.id).emit('death', { killer: p1.name });
       } else if (d < p2.r - p1.r * 0.3 && p2.mass > p1.mass * 1.1) {
+        addEatFx(world, p1, p2, true);
         setEntityMass(p2, p2.mass + p1.mass * PLAYER_ABSORB_MULT);
         p2.score += p1.score + 50;
         removedPlayers.add(p1.id);
@@ -421,10 +463,12 @@ function resolveWorldCollisions(world, mode) {
         if (removedBots.has(bot.id)) continue;
         const d = distance(p.x, p.y, bot.x, bot.y);
         if (d < p.r - bot.r * 0.3 && p.mass > bot.mass * 1.1) {
+          addEatFx(world, bot, p, true);
           setEntityMass(p, p.mass + bot.mass * PLAYER_ABSORB_MULT);
           p.score += bot.score + 40;
           removedBots.add(bot.id);
         } else if (d < bot.r - p.r * 0.3 && bot.mass > p.mass * 1.1) {
+          addEatFx(world, p, bot, true);
           const defeatedMass = p.mass;
           const defeatedScore = p.score;
           removedPlayers.add(p.id);
@@ -444,10 +488,12 @@ function resolveWorldCollisions(world, mode) {
         if (removedBots.has(b2.id)) continue;
         const d = distance(b1.x, b1.y, b2.x, b2.y);
         if (d < b1.r - b2.r * 0.3 && b1.mass > b2.mass * 1.1) {
+          addEatFx(world, b2, b1, true);
           setEntityMass(b1, b1.mass + b2.mass * BOT_ABSORB_MULT);
           b1.score += Math.floor(b2.score / 2);
           removedBots.add(b2.id);
         } else if (d < b2.r - b1.r * 0.3 && b2.mass > b1.mass * 1.1) {
+          addEatFx(world, b1, b2, true);
           setEntityMass(b2, b2.mass + b1.mass * BOT_ABSORB_MULT);
           b2.score += Math.floor(b1.score / 2);
           removedBots.add(b1.id);
@@ -473,6 +519,7 @@ function resolveWorldCollisions(world, mode) {
 
 function tickWorld(mode, dtSeconds) {
   const world = worlds[mode];
+  world.fx = [];
   const players = Object.values(world.players);
   for (const player of players) {
     updatePlayerMovement(player, dtSeconds);
@@ -546,7 +593,7 @@ setInterval(() => {
   const dtSeconds = TICK_RATE / 1000;
   for (const mode of Object.values(PLAY_MODES)) {
     tickWorld(mode, dtSeconds);
-    broadcastState(mode);
+    broadcastState(mode, true);
   }
 }, TICK_RATE);
 
