@@ -230,7 +230,7 @@ function pushWorldFx(world, event) {
   if (!world || !event || typeof event !== 'object') return;
   if (!Array.isArray(world.fx)) world.fx = [];
   world.fx.push(event);
-  const MAX_FX_PER_TICK = 160;
+  const MAX_FX_PER_TICK = 240;
   if (world.fx.length > MAX_FX_PER_TICK) {
     world.fx = world.fx.slice(-MAX_FX_PER_TICK);
   }
@@ -260,6 +260,19 @@ function addEatFx(world, victim, killer, big = true) {
     victimId: victim.id,
     killerId: killer?.id || '',
     big: Boolean(big),
+  });
+}
+
+function addTurboFx(world, entity) {
+  if (!world || !entity) return;
+  if (!entity.turbo || entity.mass <= 1.05) return;
+  pushWorldFx(world, {
+    kind: 'turbo',
+    x: entity.x,
+    y: entity.y,
+    color: entity.color1,
+    actorId: entity.id,
+    mass: entity.mass,
   });
 }
 
@@ -524,6 +537,7 @@ function tickWorld(mode, dtSeconds) {
   for (const player of players) {
     updatePlayerMovement(player, dtSeconds);
     player.pulse += 0.05;
+    addTurboFx(world, player);
   }
 
   if (mode === PLAY_MODES.ONLINE_BOTS) {
