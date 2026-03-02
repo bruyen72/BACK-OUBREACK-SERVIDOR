@@ -526,6 +526,10 @@ setInterval(() => {
   }
 }, TICK_RATE);
 
+app.get('/', (_req, res) => {
+  res.send('Servidor OutBreak online');
+});
+
 app.get('/health', (_req, res) => {
   res.json({ ok: true, modes: Object.keys(worlds), world: WORLD_SIZE, fps: FPS });
 });
